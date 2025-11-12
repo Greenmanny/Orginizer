@@ -1,0 +1,11 @@
+{
+  "StandardsRoot": "//Server/Share/USACE Civil 3D 2022 Standards",
+  "Units": "Imperial",
+  "Templates": {
+    "Disciplines": [
+      "Survey",
+      "Site Design"
+    ],
+    "UseCTB": true
+  }
+}

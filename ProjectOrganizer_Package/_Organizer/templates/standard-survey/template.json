@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "name": "standard-survey",
+  "folders": [
+    "20_TBC",
+    "30_CAD",
+    "30_CAD/_Templates",
+    "40_PDF",
+    "50_Import",
+    "90_Archive"
+  ],
+  "seeds": [
+    {
+      "from": "_Organizer/Seeds/TBC",
+      "to": "20_TBC"
+    },
+    {
+      "from": "_Organizer/Seeds/Civil3D",
+      "to": "30_CAD/_Templates"
+    }
+  ],
+  "metadata": {
+    "required": [
+      "ProjectID",
+      "Client",
+      "Mission",
+      "JobName",
+      "SurveyDate",
+      "CoordSystem"
+    ]
+  },
+  "resolve": {
+    "projectPath": "${Root}/${FY}/${MissionDir}/${JobDir}"
+  }
+}
