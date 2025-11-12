@@ -58,14 +58,14 @@ function Ensure-DefaultTemplate(){
 function Resolve-ProjectPath($root,$m){
     Join-Path (Join-Path (Join-Path $root (New-FY([datetime]$m.SurveyDate))) (Slug $m.Mission)) (Slug $m.JobName)
 }
-function Plan-NewProject($root,$tmpl,$m,[switch]$SyncthingAware){
-    $p = Resolve-ProjectPath $root $m
+function Plan-NewProject($root,$tmpl,$metadata,[switch]$SyncthingAware){
+    $p = Resolve-ProjectPath $root $metadata
     $ops = @()
     if(-not (Test-Path $p)){ $ops += "MKDIR|$p" }
     foreach($f in $tmpl.folders){ $ops += "MKDIR|$(Join-Path $p $f)" }
     foreach($s in $tmpl.seeds){ $ops += "SEED|$($s.from)|$(Join-Path $p $s.to)" }
     $ops += "MANIFEST|$(Join-Path $p 'manifest.json')"
-    [pscustomobject]@{ ProjectPath=$p; Ops=$ops; Syncthing=$SyncthingAware.IsPresent }
+    [pscustomobject]@{ ProjectPath=$p; Ops=$ops; Syncthing=$SyncthingAware.IsPresent; Metadata=$metadata }
 }
 function Apply-Plan($plan){
     $p = $plan.ProjectPath
@@ -77,7 +77,7 @@ function Apply-Plan($plan){
                 'MKDIR'    { New-Item -ItemType Directory -Force -Path $parts[1] | Out-Null }
                 'SEED'     { $src = Join-Path (Split-Path $Script:OrganizerRoot -Parent) $parts[1]; $dst = $parts[2];
                               if(Test-Path $src){ New-Item -ItemType Directory -Force -Path $dst | Out-Null; Copy-Item -Path (Join-Path $src '*') -Destination $dst -Recurse -Force -ErrorAction SilentlyContinue } }
-                'MANIFEST' { $tmpl = Read-Json $Script:TemplateFile; $manifest = @{ template=$tmpl.name; templateVersion=$tmpl.version; created=(Get-Date); metadata=$Script:CurrentMetadata }; Write-Json $manifest $parts[1] }
+                'MANIFEST' { $tmpl = Read-Json $Script:TemplateFile; $manifest = @{ template=$tmpl.name; templateVersion=$tmpl.version; created=(Get-Date); metadata=$plan.Metadata }; Write-Json $manifest $parts[1] }
             }
         }
         if($plan.Syncthing -and (Test-Syncthing())){ StScanPath $p }
@@ -121,10 +121,44 @@ function New-MainForm(){
     $btnPrev.Add_Click({
         Ensure-DefaultTemplate
         $tmpl = Read-Json $Script:TemplateFile
-        $Script:CurrentMetadata = [ordered]@{ ProjectID=$tPID.Text; Client=$tCli.Text; Mission=$tMis.Text; JobName=$tJob.Text; CoordSystem=$tCrd.Text; SurveyDate=$dt.Value; Root=$tbR.Text }
-        if([string]::IsNullOrWhiteSpace($tMis.Text) -or [string]::IsNullOrWhiteSpace($tJob.Text)){ [Windows.Forms.MessageBox]::Show('Mission and Job Name are required.')|Out-Null; return }
-        if(-not (Test-Path $tbR.Text)){ [Windows.Forms.MessageBox]::Show('Root folder not found.')|Out-Null; return }
-        $plan = Plan-NewProject -root $tbR.Text -tmpl $tmpl -m $Script:CurrentMetadata -SyncthingAware:($chk.Checked)
+        $rootPath = $tbR.Text.Trim()
+        $metadata = [ordered]@{
+            ProjectID   = $tPID.Text.Trim()
+            Client      = $tCli.Text.Trim()
+            Mission     = $tMis.Text.Trim()
+            JobName     = $tJob.Text.Trim()
+            CoordSystem = $tCrd.Text.Trim()
+            SurveyDate  = $dt.Value
+            Root        = $rootPath
+        }
+        $displayNames = @{
+            ProjectID   = 'Project ID'
+            Client      = 'Client'
+            Mission     = 'Mission'
+            JobName     = 'Job Name'
+            CoordSystem = 'Coordinate System'
+            SurveyDate  = 'Survey Date'
+        }
+        $missing = @()
+        $requiredFields = @()
+        if($null -ne $tmpl.metadata -and $null -ne $tmpl.metadata.required){
+            $requiredFields = @($tmpl.metadata.required)
+        }
+        foreach($field in $requiredFields){
+            if(-not $displayNames.ContainsKey($field)){ continue }
+            $value = $metadata[$field]
+            if($field -eq 'SurveyDate'){
+                if($null -eq $value -or $value -eq [datetime]::MinValue){ $missing += $displayNames[$field] }
+            } elseif([string]::IsNullOrWhiteSpace([string]$value)){
+                $missing += $displayNames[$field]
+            }
+        }
+        if($missing.Count -gt 0){
+            [Windows.Forms.MessageBox]::Show("Please provide values for: $([string]::Join(', ', $missing)).")|Out-Null
+            return
+        }
+        if(-not (Test-Path $rootPath)){ [Windows.Forms.MessageBox]::Show('Root folder not found.')|Out-Null; return }
+        $plan = Plan-NewProject -root $rootPath -tmpl $tmpl -metadata $metadata -SyncthingAware:($chk.Checked)
         $lines = @("Planned operations for: $($plan.ProjectPath)")
         foreach($o in $plan.Ops){ $parts=$o.Split('|'); switch($parts[0]){ 'MKDIR' { $lines += "MKDIR  `"$($parts[1])`"" }; 'SEED' { $lines += "COPY   `"$($parts[1])`" -> `"$($parts[2])`"" }; 'MANIFEST' { $lines += "WRITE  manifest.json" } } }
         $txt.Lines = $lines
